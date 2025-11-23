@@ -1,8 +1,9 @@
+// netlify/functions/proxy.js 
+
 import fs from "fs";
 import url from "url";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
-
+import { dirname } from "path"; 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -51,18 +52,20 @@ function logUniqueError(method, path, statusCode, errorMsg) {
 
 // Allowed Origins
 const allowedOrigins = [
-  "http://localhost:4321",
-  "http://127.0.0.1:4321",
-  "http://localhost:4323",
-  "http://127.0.0.1:4323",
-  "http://localhost:4355",
-  "http://127.0.0.1:4355",
-  "https://dpsmult.netlify.app",
-  "https://walletdpstg.netlify.app",
-  "https://multisend-livid.vercel.app",
-  "https://walletdps.vercel.app",
-  "https://walletdps.netlify.app",
-  "https://walletdps.netlify.com",
+  'http://localhost:4321',
+  'http://127.0.0.1:4321',
+  'http://localhost:4323',
+  'http://127.0.0.1:4323',
+  'http://localhost:8888',
+  'http://127.0.0.1:8888',
+  'http://localhost:4355',
+  'http://127.0.0.1:4355',
+  'https://dpsmult.netlify.app',
+  'https://walletdpstg.netlify.app',
+  'https://multisend-livid.vercel.app',
+  'https://walletdps.vercel.app',
+  'https://walletdps.netlify.app',
+  'https://walletdps.netlify.com',
 ];
 
 // CORS headers
@@ -91,18 +94,18 @@ export async function handler(event, context) {
   }
 
   // ✅ Serve catalog.json
-  const normalizedPath = parsedUrl.pathname.replace(/\/+$/, "");
-  if (
-    normalizedPath === "/v2/dapp/catalog" ||
-    normalizedPath === "/proxy/v2/dapp/catalog"
-  ) {
-    return {
-      statusCode: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify(catalog, null, 2),
-    };
-  }
+const rawPath = parsedUrl.pathname.replace(/\/+$/, '');
 
+// Netlify paths
+const cleanPath = rawPath.replace('/.netlify/functions/proxy', '').replace('/proxy', '');
+
+if (cleanPath === '/v2/dapp/catalog') {
+  return {
+    statusCode: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify(catalog, null, 2),
+  };
+}
   // Handle PATCH
   if (event.httpMethod === "PATCH") {
     try {
@@ -139,7 +142,7 @@ export async function handler(event, context) {
   }
 
   // 👇 Proxy logic
-  const proxyPath = parsedUrl.pathname.replace("/proxy", "");
+ const proxyPath = parsedUrl.pathname.replace('/.netlify/functions/proxy', '').replace('/proxy', '');
   const query = parsedUrl.search || "";
   const targetUrl = `https://api.mytonwallet.org${proxyPath}${query}`;
 
