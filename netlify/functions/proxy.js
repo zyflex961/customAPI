@@ -4,55 +4,54 @@ import fs from "fs";
 import url from "url";
 import path from "path";
 
-// ========== Resolve __dirname safely (Netlify-safe) ==========
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+// Netlify ESM automatically provides import.meta.url, dirname from URL:
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
-// ========== Load catalog.json ==========
+// ===== Load catalog.json =====
 let catalog = {};
 const catalogPath = path.join(__dirname, "catalog.json");
 
 try {
-  if (fs.existsSync(catalogPath)) {
-    const raw = fs.readFileSync(catalogPath, "utf-8");
-    catalog = JSON.parse(raw);
-  } else {
-    catalog = { error: "catalog.json not found" };
-  }
+  catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+  console.log("📦 catalog.json loaded");
 } catch (err) {
-  catalog = { error: "catalog.json read error", details: err.message };
+  console.error("❌ Failed loading catalog:", err.message);
+  catalog = { error: "Catalog missing or invalid" };
 }
 
-// ========== Allowed Origins ==========
+// ===== Allowed Origins =====
 const allowedOrigins = [
   "*",
   "https://tonapi.netlify.app",
   "http://localhost:4321",
   "http://127.0.0.1:4321",
   "http://localhost:8888",
+  "http://127.0.0.1:8888",
 ];
 
-// ========== CORS ==========
-function cors(origin) {
+// ===== CORS =====
+function corsHeaders(origin) {
   return {
-    "Access-Control-Allow-Origin":
-      allowedOrigins.includes(origin) ? origin : "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin)
+      ? origin
+      : "*",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "*",
     "Access-Control-Max-Age": "86400",
   };
 }
 
-// ========== Netlify Handler ==========
+// ===== MAIN HANDLER =====
 export async function handler(event) {
   const parsed = url.parse(event.rawUrl, true);
   const pathname = parsed.pathname;
-  const search = parsed.search || "";
+  const query = parsed.search || "";
   const origin = event.headers.origin || "";
-  const headers = cors(origin);
+  const cors = corsHeaders(origin);
 
-  // OPTIONS request
+  // Handle OPTIONS
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+    return { statusCode: 200, headers: cors, body: "" };
   }
 
   // Serve catalog.json
@@ -64,53 +63,50 @@ export async function handler(event) {
   if (clean === "/v2/dapp/catalog") {
     return {
       statusCode: 200,
-      headers: { ...headers, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
       body: JSON.stringify(catalog, null, 2),
     };
   }
 
-  // robots.txt
   if (clean === "/robots.txt") {
-    return { statusCode: 200, headers, body: "" };
+    return { statusCode: 200, headers: cors, body: "" };
   }
 
-  // PROXY request
+  // === PROXY request ===
   const proxyPath = pathname
     .replace("/.netlify/functions/proxy", "")
     .replace("/proxy", "");
 
-  const targetUrl = `https://api.mytonwallet.org${proxyPath}${search}`;
-  console.log("➡️ Forwarding to:", targetUrl);
+  const target = `https://api.mytonwallet.org${proxyPath}${query}`;
+  console.log("➡️ Forwarding:", target);
 
   try {
-    const response = await fetch(targetUrl, {
+    const response = await fetch(target, {
       method: event.httpMethod,
       headers: {
+        Accept: "application/json,text/plain,*/*",
         "Content-Type": "application/json",
-        Accept: "application/json",
         "X-App-Env": "Production",
       },
-      body:
-        ["POST", "PUT", "PATCH"].includes(event.httpMethod) && event.body
-          ? event.body
-          : undefined,
+      body: ["GET", "HEAD"].includes(event.httpMethod)
+        ? undefined
+        : event.body,
     });
-
-    const text = await response.text();
 
     return {
       statusCode: response.status,
       headers: {
-        ...headers,
+        ...cors,
         "Content-Type":
           response.headers.get("content-type") || "application/json",
       },
-      body: text,
+      body: await response.text(),
     };
   } catch (err) {
+    console.error("❌ Proxy Error:", err.message);
     return {
       statusCode: 500,
-      headers,
+      headers: cors,
       body: JSON.stringify({ error: err.message }),
     };
   }
