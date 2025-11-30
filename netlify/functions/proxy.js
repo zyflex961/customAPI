@@ -1,3 +1,4 @@
+// full link: https://walletdps.netlify.app/.netlify/functions/proxy
 // netlify/functions/proxy.js
 
 import fs from "fs";
